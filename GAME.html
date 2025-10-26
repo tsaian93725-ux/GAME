@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>簡易小遊戲 — 點擊進入</title>
+  <style>
+    :root{--bg:#0f1724;--card:#0b1220;--accent:#60a5fa;--glass:rgba(255,255,255,0.03)}
+    *{box-sizing:border-box;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans TC",sans-serif}
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,#071026 0%, #02111a 100%);color:#e6eef8}
+    .center{display:grid;place-items:center;height:100vh;padding:20px}
+    .card{width:100%;max-width:920px;background:rgba(255,255,255,0.02);border-radius:12px;padding:22px;box-shadow:0 8px 30px rgba(2,6,23,0.6)}
+
+    /* 歡迎頁 */
+    .welcome{display:flex;flex-direction:column;gap:18px;align-items:center;justify-content:center;text-align:center;padding:36px}
+    .welcome h1{font-size:34px;margin:0}
+    .enter-btn{background:linear-gradient(90deg,var(--accent),#7dd3fc);border:none;padding:18px 28px;border-radius:12px;font-size:20px;cursor:pointer;color:#02203a;box-shadow:0 8px 20px rgba(96,165,250,0.12);transition:transform .12s ease}
+    .enter-btn:active{transform:scale(.98)}
+    .hint{opacity:.8;font-size:14px}
+
+    /* 遊戲畫面 */
+    .game-area{display:none;flex-direction:column;gap:12px}
+    .topbar{display:flex;justify-content:space-between;align-items:center}
+    .controls{display:flex;gap:10px;align-items:center}
+    .btn-small{background:var(--glass);border:1px solid rgba(255,255,255,0.04);padding:8px 12px;border-radius:10px;color:#cfe8ff}
+
+    /* 畫布與操作 */
+    .canvas-wrap{background:linear-gradient(180deg,#07202a 0%, #031016 100%);border-radius:10px;padding:12px;border:1px solid rgba(255,255,255,0.03)}
+    canvas{display:block;background:linear-gradient(180deg,#0b2230, #051927);border-radius:6px;max-width:100%;width:100%;height:420px}
+
+    .mobile-controls{display:flex;gap:12px;justify-content:center;margin-top:10px}
+    .control-btn{padding:14px 18px;border-radius:999px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.03);cursor:pointer;user-select:none}
+
+    /* 勝利遮罩 */
+    .overlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:linear-gradient(180deg,rgba(1,6,12,0.6),rgba(0,0,0,0.6));backdrop-filter:blur(4px);z-index:40}
+    .overlay .message{background:linear-gradient(90deg,#fde68a,#fca5a5);padding:30px;border-radius:12px;color:#071422;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.5);max-width:880px;margin:10px}
+    .overlay h2{font-size:28px;margin:0 0 10px}
+    .overlay p{font-size:20px;margin:8px 0 16px}
+    .overlay .ok{padding:12px 18px;border-radius:8px;border:none;cursor:pointer;background:#0b1220;color:#e6eef8}
+
+    /* footer small */
+    .small{font-size:13px;opacity:.75}
+
+    @media (max-width:640px){canvas{height:320px}}
+  </style>
+</head>
+<body>
+  <div class="center">
+    <div class="card">
+
+      <!-- 歡迎頁面 -->
+      <div id="welcome" class="welcome">
+        <h1>歡迎</h1>
+        <button id="enterBtn" class="enter-btn">點擊進入</button>
+        <div class="hint">點擊按鈕進入小遊戲：向前碰到紅色蘋果即可獲勝！可用 ← → 鍵或畫面按鈕控制。</div>
+      </div>
+
+      <!-- 遊戲頁面 -->
+      <div id="game" class="game-area">
+        <div class="topbar">
+          <div class="small">簡易小遊戲</div>
+          <div class="controls">
+            <button id="restart" class="btn-small">重新開始</button>
+            <div class="small">按鍵：← → 或下方按鈕</div>
+          </div>
+        </div>
+
+        <div class="canvas-wrap">
+          <canvas id="gameCanvas" width="860" height="420"></canvas>
+        </div>
+
+        <div class="mobile-controls" id="mobileCtrls">
+          <div class="control-btn" id="leftBtn">◀ 向後</div>
+          <div class="control-btn" id="rightBtn">向前 ▶</div>
+        </div>
+
+        <div style="margin-top:8px;display:flex;justify-content:space-between;align-items:center">
+          <div class="small">小提示：試著按住按鍵或長按畫面按鈕會讓角色連續移動。</div>
+          <div class="small">製作：ChatGPT 小遊戲示例</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- 勝利遮罩 -->
+  <div id="overlay" class="overlay">
+    <div class="message">
+      <h2>恭喜！你贏了 🎉</h2>
+      <p>冬燐大老跑圖的時候，記得帶我，謝謝！</p>
+      <button id="okBtn" class="ok">再玩一次</button>
+    </div>
+  </div>
+
+  <script>
+    // --- 基本元素 ---
+    const welcome = document.getElementById('welcome');
+    const enterBtn = document.getElementById('enterBtn');
+    const gameArea = document.getElementById('game');
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const overlay = document.getElementById('overlay');
+    const okBtn = document.getElementById('okBtn');
+    const restartBtn = document.getElementById('restart');
+
+    // --- 遊戲物件 ---
+    const player = { x:80, y:300, w:40, h:60, speed:3, vx:0 };
+    const apple = { x:720, y:310, r:18 };
+    let running = false;
+    let won = false;
+
+    // 初始化畫面大小 (可響應)
+    function fitCanvas(){
+      // keep canvas internal resolution fixed but scale with css width
+      const wrapperWidth = Math.min(860, Math.max(320, window.innerWidth - 80));
+      canvas.style.width = wrapperWidth + 'px';
+    }
+    window.addEventListener('resize', fitCanvas);
+    fitCanvas();
+
+    // --- 畫面切換 ---
+    enterBtn.addEventListener('click', ()=>{
+      welcome.style.display = 'none';
+      gameArea.style.display = 'flex';
+      startGame();
+    });
+
+    restartBtn.addEventListener('click', ()=>{ resetGame(); startGame(); });
+    okBtn.addEventListener('click', ()=>{ overlay.style.display='none'; resetGame(); startGame(); });
+
+    // --- 控制(鍵盤 & 手機按鈕) ---
+    const leftBtn = document.getElementById('leftBtn');
+    const rightBtn = document.getElementById('rightBtn');
+
+    let leftDown=false, rightDown=false;
+    document.addEventListener('keydown', (e)=>{
+      if(e.key === 'ArrowLeft' || e.key === 'Left') leftDown = true;
+      if(e.key === 'ArrowRight' || e.key === 'Right') rightDown = true;
+    });
+    document.addEventListener('keyup', (e)=>{
+      if(e.key === 'ArrowLeft' || e.key === 'Left') leftDown = false;
+      if(e.key === 'ArrowRight' || e.key === 'Right') rightDown = false;
+    });
+
+    // touch / mouse for mobile buttons
+    function bindButtonHold(el, setTrue, setFalse){
+      el.addEventListener('pointerdown',(e)=>{e.preventDefault(); setTrue();});
+      el.addEventListener('pointerup',(e)=>{e.preventDefault(); setFalse();});
+      el.addEventListener('pointerleave',(e)=>{e.preventDefault(); setFalse();});
+      el.addEventListener('pointercancel',(e)=>{e.preventDefault(); setFalse();});
+      // allow long press (touch)
+      el.addEventListener('touchstart',(e)=>e.preventDefault(),{passive:false});
+    }
+    bindButtonHold(leftBtn, ()=>leftDown=true, ()=>leftDown=false);
+    bindButtonHold(rightBtn, ()=>rightDown=true, ()=>rightDown=false);
+
+    // --- 遊戲邏輯 ---
+    function resetGame(){
+      player.x = 80; player.vx = 0; won = false; running = false;
+      apple.x = 720; // 如果想要每次隨機可改成 Math.random()
+      overlay.style.display = 'none';
+      drawScene();
+    }
+
+    function startGame(){
+      if(running) return; running = true; lastTime = performance.now(); loop(lastTime);
+    }
+
+    // 基本碰撞檢查 (矩形 vs 圓)
+    function rectCircleCollide(rx, ry, rw, rh, cx, cy, cr){
+      // 找到最近點
+      const nearestX = Math.max(rx, Math.min(cx, rx+rw));
+      const nearestY = Math.max(ry, Math.min(cy, ry+rh));
+      const dx = cx - nearestX; const dy = cy - nearestY;
+      return (dx*dx + dy*dy) <= cr*cr;
+    }
+
+    // 繪製場景
+    function drawScene(){
+      // 清空
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+
+      // 地板
+      ctx.fillStyle = '#05222b';
+      ctx.fillRect(0,370,canvas.width,50);
+
+      // 遠景 (簡單)
+      for(let i=0;i<6;i++){
+        ctx.fillStyle = `rgba(255,255,255,${0.02 + i*0.01})`;
+        ctx.fillRect(40 + i*140, 60 + (i%2)*20, 60, 8);
+      }
+
+      // 蘋果 (紅色圓)
+      // 給它一點亮光
+      ctx.beginPath(); ctx.fillStyle='#e11d48'; ctx.arc(apple.x, apple.y, apple.r, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.fillStyle='rgba(255,255,255,0.18)'; ctx.arc(apple.x-6, apple.y-8, apple.r*0.35, 0, Math.PI*2); ctx.fill();
+      // 葉子
+      ctx.beginPath(); ctx.fillStyle='#166534'; ctx.ellipse(apple.x+8, apple.y-12, 8, 5, -0.6, 0, Math.PI*2); ctx.fill();
+
+      // 玩家 (小人，用一個圓頭與矩形身體)
+      // shadow
+      ctx.fillStyle = 'rgba(2,6,12,0.6)'; ctx.fillRect(player.x+6, player.y + player.h - 4, player.w-8, 6);
+
+      // 身體
+      ctx.fillStyle = '#60a5fa'; ctx.fillRect(player.x, player.y, player.w, player.h);
+      // 頭
+      ctx.beginPath(); ctx.fillStyle='#a7f3d0'; ctx.arc(player.x + player.w/2, player.y - 6, 14, 0, Math.PI*2); ctx.fill();
+      // 眼睛
+      ctx.fillStyle='#07203a'; ctx.fillRect(player.x + 18, player.y - 10, 4,4);
+      ctx.fillRect(player.x + 10, player.y - 10, 4,4);
+
+      // 小提示的箭頭或目標標記
+      ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fillRect(apple.x - 36, apple.y + 26, 72, 6);
+
+      // 邊框
+      ctx.strokeStyle = 'rgba(255,255,255,0.03)'; ctx.strokeRect(0,0,canvas.width,canvas.height);
+    }
+
+    // 主回圈
+    let lastTime = 0;
+    function loop(now){
+      if(!running) return; const dt = (now - lastTime) / 16.666; lastTime = now;
+
+      // 處理輸入
+      const moveSpeed = player.speed * dt;
+      if(leftDown && !rightDown) player.vx = -moveSpeed;
+      else if(rightDown && !leftDown) player.vx = moveSpeed;
+      else player.vx = 0;
+
+      // 更新位置
+      player.x += player.vx;
+      // 限制邊界
+      player.x = Math.max(6, Math.min(canvas.width - player.w - 6, player.x));
+
+      // 碰撞判定
+      if(rectCircleCollide(player.x, player.y, player.w, player.h, apple.x, apple.y, apple.r) && !won){
+        won = true; running = false; showVictory();
+      }
+
+      // 畫面
+      drawScene();
+
+      if(!won) requestAnimationFrame(loop);
+    }
+
+    function showVictory(){
+      overlay.style.display = 'flex';
+      // 可以在這裡加入更多互動（例如播放聲效）
+    }
+
+    // 首次畫面
+    resetGame();
+
+    // 允許使用者一開始就按鍵跳進
+    document.addEventListener('keydown', (e)=>{
+      if(welcome.style.display !== 'none' && (e.key === 'Enter' || e.key === ' ')){
+        enterBtn.click();
+      }
+    });
+
+    // 在畫布上也接收點擊以微移（增加互動）
+    canvas.addEventListener('click',(e)=>{
+      const rect = canvas.getBoundingClientRect();
+      const clickX = (e.clientX - rect.left) * (canvas.width / rect.width);
+      // 點擊右半部向前，左半部向後
+      if(clickX > canvas.width/2) { rightDown = true; setTimeout(()=>rightDown=false, 140); }
+      else { leftDown = true; setTimeout(()=>leftDown=false, 140); }
+    });
+
+  </script>
+</body>
+</html>
